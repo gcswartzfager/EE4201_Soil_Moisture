@@ -1,5 +1,4 @@
 from adafruit_seesaw.seesaw import Seesaw
-from AWSIoTPythonSDK.MQTTLib import AWSIoTMQTTShadowClient
 from board import SCL, SDA
 import requests
 import base64
