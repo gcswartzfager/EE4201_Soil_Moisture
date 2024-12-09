@@ -1,3 +1,4 @@
+import RPi.GPIO as GPIO
 from adafruit_seesaw.seesaw import Seesaw
 from board import SCL, SDA
 import requests
@@ -12,6 +13,11 @@ from AWSIoTPythonSDK.MQTTLib import AWSIoTMQTTShadowClient
 # Plant ID API details
 API_KEY = 'sR5sb865py7fwzwjBNKq8HxXwJi9jqxAIVX9vH6aSXcmYQv85M'
 API_URL = "https://plant.id/api/v3/health_assessment"
+
+# GPIO Pin Setup
+GPIO.setmode(GPIO.BCM)
+GPIO_PIN = 17
+GPIO.setup(GPIO_PIN, GPIO.OUT)
 
 # Capture and encode image
 def capture_and_encode_image():
@@ -131,7 +137,14 @@ def main():
         # Display moisture and temp readings
         print("Moisture Level: {}".format(moistureLevel))
         print("Temperature: {}".format(temp))
-    
+
+        if moistureLevel < 300:
+            GPIO.output(GPIO_PIN, GPIO.HIGH)
+            print("Moisture level is low")
+        else:
+            GPIO.output(GPIO_PIN, GPIO.LOW)
+            print("Moisture level is sufficient")
+        
         # Create message payload
         payload = {"state":{"reported":{"moisture":str(moistureLevel),"temp":str(temp)}}}
 
@@ -141,5 +154,13 @@ def main():
         # Wait before capturing the next image
         time.sleep(10)
 
+def cleanup_gpio():
+    GPIO.cleanup()
+
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("Program interrupted.")
+    finally:
+        cleanup_gpio()
