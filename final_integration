@@ -123,24 +123,23 @@ def main():
         print(f"Published: {payload}")
 
         # read moisture level through capacitive touch pad
-    moistureLevel = ss.moisture_read()
+        moistureLevel = ss.moisture_read()
 
-    # read temperature from the temperature sensor
-    temp = ss.get_temp()
+        # read temperature from the temperature sensor
+        temp = ss.get_temp()
 
-    # Display moisture and temp readings
-    print("Moisture Level: {}".format(moistureLevel))
-    print("Temperature: {}".format(temp))
+        # Display moisture and temp readings
+        print("Moisture Level: {}".format(moistureLevel))
+        print("Temperature: {}".format(temp))
     
-    # Create message payload
-    payload = {"state":{"reported":{"moisture":str(moistureLevel),"temp":str(temp)}}}
+        # Create message payload
+        payload = {"state":{"reported":{"moisture":str(moistureLevel),"temp":str(temp)}}}
 
-    # Update shadow
-    deviceShadowHandler.shadowUpdate(json.dumps(payload), customShadowCallback_Update, 5)
+        # Update shadow
+        deviceShadowHandler.shadowUpdate(json.dumps(payload), customShadowCallback_Update, 5)
 
         # Wait before capturing the next image
         time.sleep(10)
 
 if __name__ == "__main__":
     main()
-
