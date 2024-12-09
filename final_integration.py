@@ -10,6 +10,10 @@ import logging
 import argparse
 from picamera2 import Picamera2
 import busio  # Import busio for I2C communication
+from threading import Lock
+
+# Lock to manage resource access
+resource_lock = Lock()
 
 # Plant ID API details
 API_KEY = 'sR5sb865py7fwzwjBNKq8HxXwJi9jqxAIVX9vH6aSXcmYQv85M'
@@ -25,12 +29,7 @@ line = chip.get_line(GPIO_LINE)
 line.request(consumer="PlantMonitor", type=gpiod.LINE_REQ_DIR_OUT)
 
 # Capture and encode image
-def capture_and_encode_image():
-    picam2 = Picamera2()
-    config = picam2.create_still_configuration()
-    picam2.configure(config)
-    picam2.start()
-
+def capture_and_encode_image(picam2):
     try:
         filename = "captured_image.jpg"
         picam2.capture_file(filename)
@@ -41,8 +40,9 @@ def capture_and_encode_image():
             encoded_img = base64.b64encode(image_file.read()).decode('utf-8')
         print("Image successfully encoded to Base64")
         return encoded_img
-    finally:
-        picam2.stop()
+    except Exception as e:
+        print(f"Error capturing image: {e}")
+        return None
 
 # Send image to Plant ID API and get disease information
 def assess_plant_health(encoded_img):
@@ -59,6 +59,13 @@ def assess_plant_health(encoded_img):
         "name": most_likely['name'],
         "probability": most_likely['probability']
     }
+
+# Read moisture and temperature
+def read_moisture_and_temperature(ss):
+    with resource_lock:  # Ensure exclusive access
+        moisture = ss.moisture_read()
+        temp = ss.get_temp()
+    return moisture, temp
 
 # AWS IoT MQTT callbacks
 def custom_shadow_callback_update(payload, responseStatus, token):
@@ -111,61 +118,59 @@ def main():
     # Initialize Raspberry Pi's I2C interface
     i2c_bus = busio.I2C(SCL, SDA)
 
-    # Intialize SeeSaw, Adafruit's Circuit Python library
+    # Initialize SeeSaw, Adafruit's Circuit Python library
     ss = Seesaw(i2c_bus, addr=0x36)
 
-    while True:
-        # Capture and analyze plant health
-        encoded_img = capture_and_encode_image()
-        disease_info = assess_plant_health(encoded_img)
+    # Initialize the camera once
+    picam2 = Picamera2()
+    config = picam2.create_still_configuration()
+    picam2.configure(config)
+    picam2.start()
 
-        # Create MQTT payload
-        payload = {
-            "state": {
-                "reported": {
-                    "disease": disease_info["name"],
-                    "probability": str(disease_info["probability"])
-                }
-            }
-        }
+    try:
+        while True:
+            # Lock the resource to avoid conflicts
+            with resource_lock:
+                # Capture and analyze plant health
+                encoded_img = capture_and_encode_image(picam2)
+                if encoded_img:
+                    disease_info = assess_plant_health(encoded_img)
 
-        # Publish to AWS IoT
-        device_shadow_handler.shadowUpdate(json.dumps(payload), custom_shadow_callback_update, 5)
-        print(f"Published: {payload}")
+                    # Create MQTT payload for plant health
+                    payload = {
+                        "state": {
+                            "reported": {
+                                "disease": disease_info["name"],
+                                "probability": str(disease_info["probability"])
+                            }
+                        }
+                    }
+                    # Publish to AWS IoT
+                    device_shadow_handler.shadowUpdate(json.dumps(payload), custom_shadow_callback_update, 5)
+                    print(f"Published plant health: {payload}")
 
-        # Read moisture level and temperature
-        moistureLevel = ss.moisture_read()
-        temp = ss.get_temp()
+            # Read moisture level and temperature
+            moisture, temp = read_moisture_and_temperature(ss)
+            print("Moisture Level: {}".format(moisture))
+            print("Temperature: {}".format(temp))
 
-        # Display moisture and temp readings
-        print("Moisture Level: {}".format(moistureLevel))
-        print("Temperature: {}".format(temp))
-        
-        # Create message payload
-        payload = {"state":{"reported":{"moisture":str(moistureLevel),"temp":str(temp)}}}
+            # If moisture level is below 300, set GPIO pin HIGH
+            if moisture < 300:
+                line.set_value(1)  # Set GPIO high
+                print("Moisture level is low, GPIO pin set HIGH")
+            else:
+                line.set_value(0)  # Set GPIO low
+                print("Moisture level is sufficient, GPIO pin set LOW")
 
-        # Update shadow
-        device_shadow_handler.shadowUpdate(json.dumps(payload), custom_shadow_callback_update, 5)
+            # Create message payload for environment data
+            payload = {"state": {"reported": {"moisture": str(moisture), "temp": str(temp)}}}
+            device_shadow_handler.shadowUpdate(json.dumps(payload), custom_shadow_callback_update, 5)
 
-        # If moisture level is below 300, set GPIO pin HIGH
-        if moistureLevel < 300:
-            line.set_value(1)  # Set GPIO high
-            print("Moisture level is low, GPIO pin set HIGH")
-        else:
-            line.set_value(0)  # Set GPIO low
-            print("Moisture level is sufficient, GPIO pin set LOW")
-
-        # Wait before capturing the next image
-        time.sleep(10)
-
-# Clean up GPIO on program exit
-def cleanup_gpio():
-    line.set_value(0)  # Reset GPIO line to low (optional)
+            # Wait before next iteration
+            time.sleep(10)
+    finally:
+        picam2.stop()
+        picam2.close()
 
 if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("Program interrupted.")
-    finally:
-        cleanup_gpio()
+    main()
