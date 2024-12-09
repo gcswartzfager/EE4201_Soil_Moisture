@@ -1,5 +1,6 @@
-import RPi.GPIO as GPIO
+import gpiod  # Import the libgpiod library
 from adafruit_seesaw.seesaw import Seesaw
+from AWSIoTPythonSDK.MQTTLib import AWSIoTMQTTShadowClient
 from board import SCL, SDA
 import requests
 import base64
@@ -8,16 +9,20 @@ import time
 import logging
 import argparse
 from picamera2 import Picamera2
-from AWSIoTPythonSDK.MQTTLib import AWSIoTMQTTShadowClient
+import busio  # Import busio for I2C communication
 
 # Plant ID API details
 API_KEY = 'sR5sb865py7fwzwjBNKq8HxXwJi9jqxAIVX9vH6aSXcmYQv85M'
 API_URL = "https://plant.id/api/v3/health_assessment"
 
-# GPIO Pin Setup
-GPIO.setmode(GPIO.BCM)
-GPIO_PIN = 17
-GPIO.setup(GPIO_PIN, GPIO.OUT)
+# GPIO Setup
+GPIO_CHIP = "/dev/gpiochip0"  # Path to GPIO chip
+GPIO_LINE = 17               # GPIO line number (corresponds to GPIO17 on BCM)
+
+# Initialize GPIO
+chip = gpiod.Chip(GPIO_CHIP)
+line = chip.get_line(GPIO_LINE)
+line.request(consumer="PlantMonitor", type=gpiod.LINE_REQ_DIR_OUT)
 
 # Capture and encode image
 def capture_and_encode_image():
@@ -128,34 +133,34 @@ def main():
         device_shadow_handler.shadowUpdate(json.dumps(payload), custom_shadow_callback_update, 5)
         print(f"Published: {payload}")
 
-        # read moisture level through capacitive touch pad
+        # Read moisture level and temperature
         moistureLevel = ss.moisture_read()
-
-        # read temperature from the temperature sensor
         temp = ss.get_temp()
 
         # Display moisture and temp readings
         print("Moisture Level: {}".format(moistureLevel))
         print("Temperature: {}".format(temp))
-
-        if moistureLevel < 300:
-            GPIO.output(GPIO_PIN, GPIO.HIGH)
-            print("Moisture level is low")
-        else:
-            GPIO.output(GPIO_PIN, GPIO.LOW)
-            print("Moisture level is sufficient")
         
         # Create message payload
         payload = {"state":{"reported":{"moisture":str(moistureLevel),"temp":str(temp)}}}
 
         # Update shadow
-        deviceShadowHandler.shadowUpdate(json.dumps(payload), customShadowCallback_Update, 5)
+        device_shadow_handler.shadowUpdate(json.dumps(payload), custom_shadow_callback_update, 5)
+
+        # If moisture level is below 300, set GPIO pin HIGH
+        if moistureLevel < 300:
+            line.set_value(1)  # Set GPIO high
+            print("Moisture level is low, GPIO pin set HIGH")
+        else:
+            line.set_value(0)  # Set GPIO low
+            print("Moisture level is sufficient, GPIO pin set LOW")
 
         # Wait before capturing the next image
         time.sleep(10)
 
+# Clean up GPIO on program exit
 def cleanup_gpio():
-    GPIO.cleanup()
+    line.set_value(0)  # Reset GPIO line to low (optional)
 
 if __name__ == "__main__":
     try:
