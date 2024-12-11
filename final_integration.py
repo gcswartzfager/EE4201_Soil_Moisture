@@ -20,7 +20,7 @@ API_KEY = 'sR5sb865py7fwzwjBNKq8HxXwJi9jqxAIVX9vH6aSXcmYQv85M'
 API_URL = "https://plant.id/api/v3/health_assessment"
 
 # GPIO Setup
-GPIO_CHIP = "/dev/gpiochip0"  # Path to GPIO chip
+GPIO_CHIP = "gpiochip4"  # Path to GPIO chip
 GPIO_LINE = 17               # GPIO line number (corresponds to GPIO17 on BCM)
 
 # Initialize GPIO
@@ -155,9 +155,11 @@ def main():
             print("Temperature: {}".format(temp))
 
             # If moisture level is below 300, set GPIO pin HIGH
-            if moisture < 300:
+            if moisture < 400:
                 line.set_value(1)  # Set GPIO high
                 print("Moisture level is low, GPIO pin set HIGH")
+                time.sleep(3)
+                line.set_value(0)
             else:
                 line.set_value(0)  # Set GPIO low
                 print("Moisture level is sufficient, GPIO pin set LOW")
