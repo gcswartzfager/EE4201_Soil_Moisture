@@ -1,4 +1,4 @@
-import gpiod  # Import the libgpiod library
+import gpiod  
 from adafruit_seesaw.seesaw import Seesaw
 from AWSIoTPythonSDK.MQTTLib import AWSIoTMQTTShadowClient
 from board import SCL, SDA
@@ -9,7 +9,7 @@ import time
 import logging
 import argparse
 from picamera2 import Picamera2
-import busio  # Import busio for I2C communication
+import busio 
 from threading import Lock
 
 # Lock to manage resource access
@@ -97,7 +97,7 @@ def parse_args():
     parser.add_argument("-id", "--clientId", default="PlantHealthPublisher", help="Targeted client id")
     return parser.parse_args()
 
-# Main function
+
 def main():
     args = parse_args()
     configure_logging()
@@ -118,7 +118,7 @@ def main():
     # Initialize Raspberry Pi's I2C interface
     i2c_bus = busio.I2C(SCL, SDA)
 
-    # Initialize SeeSaw, Adafruit's Circuit Python library
+    # Initialize SeeSaw
     ss = Seesaw(i2c_bus, addr=0x36)
 
     # Initialize the camera once
@@ -154,11 +154,11 @@ def main():
             print("Moisture Level: {}".format(moisture))
             print("Temperature: {}".format(temp))
 
-            # If moisture level is below 300, set GPIO pin HIGH
+            # If moisture level is below 400, set GPIO pin HIGH
             if moisture < 400:
                 line.set_value(1)  # Set GPIO high
                 print("Moisture level is low, GPIO pin set HIGH")
-                time.sleep(3)
+                time.sleep(3) # on for 3 seconds 
                 line.set_value(0)
             else:
                 line.set_value(0)  # Set GPIO low
